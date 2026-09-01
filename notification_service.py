@@ -379,20 +379,10 @@ class NotificationService:
 
         try:
 
-            print("=" * 70)
-            print("DEBUG: ABOUT TO SEND SMS")
-            print(f"Customer : {customer}")
-            print(f"Phone    : {phone!r}")
-            print(f"Message  : {message!r}")
-
             result = self.dialog.send_sms(
                 mobile=phone,
                 message=message,
             )
-
-            print("DEBUG: DIALOG API RESULT")
-            print(result)
-            print("=" * 70)
 
             result.update({
                 "customer": customer,

@@ -44,8 +44,8 @@ from googleapiclient.http import MediaFileUpload
 
 BASE_DIR = Path(__file__).resolve().parent
 
-CREDENTIALS_FILE = BASE_DIR / "credentials.json"
-TOKEN_FILE = BASE_DIR / "token.json"
+CREDENTIALS_FILE = BASE_DIR /"credentials"/"credentials.json"
+TOKEN_FILE = BASE_DIR /"credentials" / "token.json"
 
 
 # ============================================================================

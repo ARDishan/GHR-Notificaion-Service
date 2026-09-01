@@ -5,3 +5,5 @@ data.xlsx
 .~lock.data.xlsx#
 credentials/*
 token.json
+.gitignore
+temp_uploads/*
