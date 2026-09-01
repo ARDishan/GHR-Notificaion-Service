@@ -1,0 +1,7 @@
+.env
+__pycache__/*
+logs/*
+data.xlsx
+.~lock.data.xlsx#
+credentials/*
+token.json

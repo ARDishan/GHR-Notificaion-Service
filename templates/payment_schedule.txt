@@ -1,0 +1,10 @@
+Dear {customer},
+
+This is a friendly reminder regarding your outstanding balance due this month. If you have already made the payment, please disregard this message.
+
+Please find your payment schedule for {unit_ref} using the link below:
+
+{drive_link}
+
+Thank you.
+GHR Global
