@@ -8,3 +8,5 @@ google-auth-oauthlib
 google-auth-httplib2
 reportlab
 streamlit
+sqlalchemy
+psycopg2-binary

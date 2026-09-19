@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import pandas as pd
+from sqlalchemy import text
 
 from config import (
     REQUIRED_COLUMNS,
@@ -11,6 +12,7 @@ from config import (
 )
 
 from dialog_sms import DialogSMS
+from db import get_engine
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +93,149 @@ class NotificationService:
         )
 
         return df
+
+    # -----------------------------------------------------------------------
+    # Database — pending documents (replaces Excel + folder matching)
+    # -----------------------------------------------------------------------
+
+    def load_pending_from_db(
+        self,
+        notification_type,
+        month_folder=None,
+        document_type=None,
+        engine=None,
+    ):
+        """
+        Return generated_documents rows that do NOT yet have a
+        SUCCESS entry in notification_log for this notification_type —
+        i.e. exactly what still needs sending.
+
+        document_type optionally restricts which kind of document
+        counts (e.g. "payment_schedule" vs "welcome_letter") since
+        one table now holds multiple document kinds. If omitted, it
+        defaults to matching notification_type itself, which covers
+        the common case (payment_schedule -> payment_schedule,
+        welcome_letter -> welcome_letter). Pass it explicitly for
+        multi-stage reminders, e.g.:
+
+            load_pending_from_db("due_reminder_1", document_type="payment_schedule")
+            load_pending_from_db("due_reminder_2", document_type="payment_schedule")
+
+        No folder path, no filename matching: the PDF bytes and
+        Drive upload status all live on the row itself.
+        """
+
+        if engine is None:
+            engine = get_engine()
+
+        if document_type is None:
+            document_type = notification_type
+
+        query = """
+            SELECT gd.*
+            FROM generated_documents gd
+            WHERE gd.document_type = :doc_type
+              AND NOT EXISTS (
+                SELECT 1 FROM notification_log nl
+                WHERE nl.generated_document_id = gd.id
+                  AND nl.notification_type = :ntype
+                  AND nl.status IN ('SUCCESS')
+            )
+        """
+
+        params = {"ntype": notification_type, "doc_type": document_type}
+
+        if month_folder:
+            query += " AND gd.month_folder = :month"
+            params["month"] = month_folder
+
+        query += " ORDER BY gd.customer, gd.unit_ref_id"
+
+        df = pd.read_sql(text(query), engine, params=params)
+
+        logger.info(
+            "Loaded %d pending document(s) for notification_type=%s, document_type=%s, month=%s",
+            len(df),
+            notification_type,
+            document_type,
+            month_folder or "(all)",
+        )
+
+        return df
+
+    def log_notification(
+        self,
+        generated_document_id,
+        customer,
+        unit_ref,
+        phone,
+        notification_type,
+        status,
+        comment="",
+        engine=None,
+    ):
+        """
+        Record one SMS attempt so it is never sent twice for the
+        same document + notification type.
+        """
+
+        if engine is None:
+            engine = get_engine()
+
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO notification_log
+                        (generated_document_id, customer, unit_ref_id, phone,
+                         notification_type, status, comment)
+                    VALUES
+                        (:doc_id, :customer, :unit_ref, :phone,
+                         :ntype, :status, :comment)
+                    """
+                ),
+                {
+                    "doc_id": generated_document_id,
+                    "customer": customer,
+                    "unit_ref": unit_ref,
+                    "phone": phone,
+                    "ntype": notification_type,
+                    "status": status,
+                    "comment": comment,
+                },
+            )
+
+    def mark_document_uploaded(
+        self,
+        generated_document_id,
+        drive_file_id,
+        drive_web_url,
+        engine=None,
+    ):
+        """
+        Record the Drive upload result on the generated_documents row.
+        """
+
+        if engine is None:
+            engine = get_engine()
+
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    UPDATE generated_documents
+                    SET drive_file_id = :file_id,
+                        drive_web_url = :web_url,
+                        uploaded_at = now()
+                    WHERE id = :doc_id
+                    """
+                ),
+                {
+                    "file_id": drive_file_id,
+                    "web_url": drive_web_url,
+                    "doc_id": generated_document_id,
+                },
+            )
 
     # -----------------------------------------------------------------------
     # Template
@@ -311,13 +456,7 @@ class NotificationService:
         project,
         drive_file_id,
         notification_type="payment_schedule",
-        dry_run=False,
     ):
-
-        print(
-        f"DEBUG PHONE: value={phone!r}, "
-        f"type={type(phone).__name__}"
-        )
 
         # ---------------------------------------------------------------
         # Normalize phone
@@ -349,29 +488,6 @@ class NotificationService:
             project=project,
             drive_link=drive_link,
         )
-
-        # ---------------------------------------------------------------
-        # Dry run
-        # ---------------------------------------------------------------
-
-        if dry_run:
-
-            logger.info(
-                "DRY RUN | Customer=%s | Phone=%s | Unit=%s",
-                customer,
-                phone,
-                unit_ref,
-            )
-
-            return {
-                "success": True,
-                "status": "DRY_RUN",
-                "customer": customer,
-                "phone": phone,
-                "unit_ref": unit_ref,
-                "drive_link": drive_link,
-                "message": message,
-            }
 
         # ---------------------------------------------------------------
         # Real SMS

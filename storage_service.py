@@ -26,6 +26,7 @@ Later runs:
     token.json will be reused.
 """
 
+import io
 import mimetypes
 from pathlib import Path
 
@@ -35,7 +36,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
 
 
 # ============================================================================
@@ -496,6 +497,130 @@ class GoogleDriveService:
                 "name": uploaded_file["name"],
                 "web_url": web_url,
                 "folder_id": month_folder_id,
+                "public": public,
+                "comment": "PDF uploaded successfully."
+            }
+
+        except Exception as error:
+
+            print(
+                f"Google Drive upload failed: {error}"
+            )
+
+            return {
+                "success": False,
+                "uploaded": False,
+                "id": "",
+                "name": "",
+                "web_url": "",
+                "folder_id": "",
+                "public": False,
+                "comment": str(error)
+            }
+
+    # ========================================================================
+    # UPLOAD FROM IN-MEMORY BYTES (used when PDFs live in the database
+    # instead of a local file, e.g. rows from generated_documents)
+    # ========================================================================
+
+    def upload_bytes(
+        self,
+        pdf_bytes,
+        file_name,
+        month_name,
+        document_type=None,
+        skip_if_exists=True
+    ):
+        """
+        Upload PDF bytes (no local file needed) to:
+
+            Payment Schedule/
+                YYYY-MM/
+
+        Flat structure — document_type is accepted but not used for
+        folder placement (kept only so callers don't need to change);
+        it's still used elsewhere to distinguish document kinds in the
+        database.
+
+        Same return shape as upload_payment_schedule().
+        """
+
+        try:
+
+            if not file_name.lower().endswith(".pdf"):
+                file_name += ".pdf"
+
+            folder_id = self.get_month_folder(
+                month_name
+            )
+
+            if skip_if_exists:
+
+                existing = self.find_file(
+                    file_name,
+                    folder_id
+                )
+
+                if existing:
+
+                    print(
+                        f"File already exists in Google Drive: "
+                        f"{file_name}"
+                    )
+
+                    existing["success"] = True
+                    existing["uploaded"] = False
+                    existing["public"] = True
+                    existing["comment"] = (
+                        "File already exists in Google Drive."
+                    )
+
+                    return existing
+
+            media = MediaIoBaseUpload(
+                io.BytesIO(pdf_bytes),
+                mimetype="application/pdf",
+                resumable=True
+            )
+
+            metadata = {
+                "name": file_name,
+                "parents": [folder_id]
+            }
+
+            uploaded_file = (
+                self.service.files()
+                .create(
+                    body=metadata,
+                    media_body=media,
+                    fields="id, name, webViewLink"
+                )
+                .execute()
+            )
+
+            file_id = uploaded_file["id"]
+
+            print(
+                f"Uploaded to Google Drive: "
+                f"{uploaded_file['name']}"
+            )
+
+            public = self._make_file_public(
+                file_id
+            )
+
+            web_url = (
+                f"https://drive.google.com/file/d/"
+                f"{file_id}/view"
+            )
+
+            return {
+                "success": True,
+                "uploaded": True,
+                "id": file_id,
+                "name": uploaded_file["name"],
+                "web_url": web_url,
+                "folder_id": folder_id,
                 "public": public,
                 "comment": "PDF uploaded successfully."
             }
