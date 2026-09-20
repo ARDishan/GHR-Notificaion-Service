@@ -1,0 +1,15 @@
+services:
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    ports:
+      - "${TAILSCALE_IP}:8502:8502"
+      - "${LAN_IP}:8502:8502"
