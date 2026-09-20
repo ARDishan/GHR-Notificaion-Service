@@ -19,12 +19,12 @@ load_dotenv(BASE_DIR / ".env")
 
 GOOGLE_CREDENTIALS_FILE = os.getenv(
     "GOOGLE_CREDENTIALS_FILE",
-    str(BASE_DIR / "credentials" / "google_drive_credentials.json")
+    str(BASE_DIR / "credentials" / "credentials.json")
 )
 
 GOOGLE_TOKEN_FILE = os.getenv(
     "GOOGLE_TOKEN_FILE",
-    str(BASE_DIR / "token.json")
+    str(BASE_DIR / "credentials" / "token.json")
 )
 
 GOOGLE_DRIVE_ROOT_FOLDER = os.getenv(

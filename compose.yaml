@@ -1,15 +1,17 @@
 services:
 
   notification-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/ardishan/ghr-notificaion-service:latest
     container_name: notification-service
     restart: unless-stopped
-    volumes:
-      - .:/app
+
     env_file:
       - .env
+
+    volumes:
+      - ./credentials:/app/credentials
+      - ./logs:/app/logs
+
     ports:
       - "${TAILSCALE_IP}:8502:8502"
       - "${LAN_IP}:8502:8502"

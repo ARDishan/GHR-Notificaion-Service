@@ -1,7 +1,12 @@
 .env
-credentials/*.json
-logs/*.log
+credentials/
+logs/
+data.xlsx
+temp_uploads/
+token.json
+
 __pycache__/
 *.pyc
+
 .git
 .gitignore
