@@ -71,10 +71,26 @@ jobs:
           chmod 600 ~/.ssh/production_deploy
 
       - name: Deploy Notification Service
+        timeout-minutes: 5
         run: |
-          ssh \
+          timeout 4m ssh \
             -i ~/.ssh/production_deploy \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=3 \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
             deploy@${{ secrets.PRODUCTION_DEPLOY_HOST }} \
             'sudo -n /usr/local/lib/production-deploy/notification-service.sh'
+
+      - name: Verify deployment
+        run: |
+          ssh \
+            -i ~/.ssh/production_deploy \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            deploy@${{ secrets.PRODUCTION_DEPLOY_HOST }} \
+            'docker inspect notification-service --format "{{.State.Health.Status}}"'
