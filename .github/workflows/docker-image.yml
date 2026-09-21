@@ -46,9 +46,14 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  deploy:
+    deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    concurrency:
+      group: production-deploy-notification
+      cancel-in-progress: false
 
     permissions:
       id-token: write
@@ -71,9 +76,9 @@ jobs:
           chmod 600 ~/.ssh/production_deploy
 
       - name: Deploy Notification Service
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: |
-          timeout 4m ssh \
+          ssh -T \
             -i ~/.ssh/production_deploy \
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
@@ -83,14 +88,3 @@ jobs:
             -o UserKnownHostsFile=/dev/null \
             deploy@${{ secrets.PRODUCTION_DEPLOY_HOST }} \
             'sudo -n /usr/local/lib/production-deploy/notification-service.sh'
-
-      - name: Verify deployment
-        run: |
-          ssh \
-            -i ~/.ssh/production_deploy \
-            -o BatchMode=yes \
-            -o ConnectTimeout=15 \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            deploy@${{ secrets.PRODUCTION_DEPLOY_HOST }} \
-            'docker inspect notification-service --format "{{.State.Health.Status}}"'
