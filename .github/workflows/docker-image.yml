@@ -2,9 +2,7 @@ name: Build and Deploy Docker Image
 
 on:
   push:
-    branches:
-      - main
-
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -12,7 +10,6 @@ env:
   IMAGE_NAME: ardishan/ghr-notificaion-service
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
 
@@ -21,27 +18,26 @@ jobs:
       packages: write
 
     steps:
-
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
+      - name: Docker metadata
         uses: docker/metadata-action@v5
+        id: meta
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
             type=sha
 
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -52,41 +48,33 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_CLIENT_ID }}
+          audience: ${{ secrets.TAILSCALE_AUDIENCE }}
+          tags: tag:ci
+
+      - name: Configure SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/production_deploy
+          chmod 600 ~/.ssh/production_deploy
 
       - name: Deploy Notification Service
         run: |
-          cd /opt/apps/GHR-Notificaion-Service
-
-          echo "Pulling latest Docker image..."
-          docker compose pull
-
-          echo "Starting updated container..."
-          docker compose up -d
-
-          echo "Waiting for container to become healthy..."
-
-          for i in {1..30}; do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' notification-service 2>/dev/null || echo "starting")
-
-            echo "Health status: $STATUS"
-
-            if [ "$STATUS" = "healthy" ]; then
-              echo "Deployment successful!"
-              exit 0
-            fi
-
-            if [ "$STATUS" = "unhealthy" ]; then
-              echo "Container became unhealthy."
-              docker compose logs --tail=100
-              exit 1
-            fi
-
-            sleep 2
-          done
-
-          echo "Container did not become healthy within 60 seconds."
-          docker compose logs --tail=100
-          exit 1
+          ssh \
+            -i ~/.ssh/production_deploy \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            deploy@${{ secrets.PRODUCTION_DEPLOY_HOST }} \
+            'sudo -n /usr/local/lib/production-deploy/notification-service.sh'
