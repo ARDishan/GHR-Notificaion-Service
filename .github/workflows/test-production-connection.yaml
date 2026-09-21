@@ -1,0 +1,49 @@
+name: Test Production Connection
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test-production:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_CLIENT_ID }}
+          audience: ${{ secrets.TAILSCALE_AUDIENCE }}
+          tags: tag:ci
+
+      - name: Show Tailscale status
+        run: |
+          tailscale status
+
+      - name: Test server connectivity
+        run: |
+          tailscale ping ubuntu-server
+
+      - name: Test SSH port
+        run: |
+          nc -vz ubuntu-server 22
+
+      - name: Configure SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/production_deploy
+          chmod 600 ~/.ssh/production_deploy
+
+      - name: Test restricted SSH authentication
+        run: |
+          ssh \
+            -i ~/.ssh/production_deploy \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            deploy@${{ secrets.PRODUCTION_DEPLOY_HOST }} \
+            'id && whoami && hostname'
