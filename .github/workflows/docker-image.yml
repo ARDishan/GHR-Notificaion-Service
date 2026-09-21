@@ -46,7 +46,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-    deploy:
+  deploy:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
